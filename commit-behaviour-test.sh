@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 
+function log() {
+    echo "[log] $@"
+}
+
 function kafka-read() {
     kafkacat -C -b localhost:9092 -t "output" -p 0 -o -10 -e
 }
 
 function kafka-write() {
-   echo "$1&$2" | kafkacat -P -b localhost:9092 -t "input" -K "&"
+   echo "$1" | kafkacat -P -b localhost:9092 -t "input"
 }
 
 function kafka-op() {
@@ -15,6 +19,8 @@ function kafka-op() {
 function kill-app() {
     pkill -9 -P $1
     kill -9 $1
+
+    log "Killed PID $1 and child PIDs"
 }
 
 function expect-output() {
@@ -23,51 +29,49 @@ function expect-output() {
     echo "Expect it to be '$1'"
 
     if [ X"${OUTPUT}" = X"$1" ]; then
-        echo "🐸 Worked!"
+        log "🐸 Worked!"
         return 0
     else
-        echo "🙈 Failed!"
+        log "🙈 Failed!"
         exit 1
     fi
 }
 
 function finish {
-  echo "Stopping Kafka..."
+  log "Stopping Kafka..."
   kafka-op down
 }
 
 trap finish EXIT
 
-echo "Building the application"
+log "Building the application"
 sbt package
 
-echo "Starting Kafka..."
+log "Starting Kafka..."
 kafka-op up -d
-echo "Wait for 10 seconds until Kafka is ready..."
+log "Wait for 10 seconds until Kafka is ready..."
 sleep 10
 
-echo "Send message to input topic"
-kafka-write 1 "message"
+log "Send message to input topic"
+kafka-write "message"
 
-echo "Run the java app"
+log "Run the java app"
 TIME=1 sbt run &
 JAVA_APP=$!
 
-echo "The java PID is ${JAVA_APP}"
+log "The java PID is ${JAVA_APP}"
 sleep 10
 kill-app ${JAVA_APP}
-echo "Killed the java process ${JAVA_APP}"
 
 expect-output ""
 
-echo "Second run..."
+log "Second run..."
 TIME=2 sbt run &
 JAVA_APP=$!
-echo "The java PID is ${JAVA_APP}"
+log "The java PID is ${JAVA_APP}"
 
 sleep 20
 kill-app ${JAVA_APP}
-echo "Killed the java process ${JAVA_APP}"
 
 expect-output "2-message"
 
