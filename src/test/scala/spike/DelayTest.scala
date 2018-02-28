@@ -14,23 +14,20 @@ import org.scalatest.{Matchers, WordSpec}
 import scala.concurrent.duration._
 
 class DelayTest extends WordSpec with Matchers with EmbeddedKafka {
-
   import actorSystem.dispatcher
 
   implicit val actorSystem: ActorSystem = ActorSystem("my-happy-actor-system")
   implicit val actorMaterializer: ActorMaterializer = ActorMaterializer()
   implicit val consumerSettings: ConsumerSettings[String, String] = ConsumerSettings(actorSystem, new StringDeserializer, new StringDeserializer)
   implicit val config: EmbeddedKafkaConfig = EmbeddedKafkaConfig(kafkaPort = 9092)
-  implicit val deser = new StringDeserializer()
 
   private lazy val InputTopic = "delay-topic"
   private lazy val source = Consumer.committableSource(consumerSettings, Subscriptions.topics(InputTopic))
 
-  "Delay app should read from the topic and print out the messages" in withRunningKafka {
+  "Delay app should not block consumption of other messages" in withRunningKafka {
     publishStringMessageToKafka(InputTopic, "message one")
     publishStringMessageToKafka(InputTopic, "message two")
-    consumeNumberMessagesFromTopics(Set(InputTopic), 2)
-    //    consumeFirstStringMessageFrom(InputTopic)
+    consumeNumberStringMessagesFrom(InputTopic, 2)
 
     val app = new Delay()
     val output = source.via(app())

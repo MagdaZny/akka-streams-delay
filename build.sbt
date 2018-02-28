@@ -13,3 +13,5 @@ libraryDependencies ++= Seq(
   "net.manub" %% "scalatest-embedded-kafka" % "1.0.0" % Test,
   "com.typesafe.akka" %% "akka-stream-testkit" % "2.5.9" % Test
 )
+
+fork in run := false
