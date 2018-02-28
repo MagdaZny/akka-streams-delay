@@ -1,51 +1,29 @@
 package spike
 
-import java.time.{LocalDateTime, ZoneOffset}
-
 import akka.actor.ActorSystem
-import akka.kafka.scaladsl.Consumer
-import akka.kafka.{ConsumerSettings, Subscriptions}
-import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Source
 import akka.stream.testkit.javadsl.TestSink
-import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
-import org.apache.kafka.common.serialization.StringDeserializer
+import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Attributes, DelayOverflowStrategy}
 import org.scalatest.{Matchers, WordSpec}
-
 import scala.concurrent.duration._
 
-class DelayTest extends WordSpec with Matchers with EmbeddedKafka {
-  import actorSystem.dispatcher
+class DelayTest extends WordSpec with Matchers {
 
   implicit val actorSystem: ActorSystem = ActorSystem("my-happy-actor-system")
-  implicit val actorMaterializer: ActorMaterializer = ActorMaterializer()
-  implicit val consumerSettings: ConsumerSettings[String, String] = ConsumerSettings(actorSystem, new StringDeserializer, new StringDeserializer)
-  implicit val config: EmbeddedKafkaConfig = EmbeddedKafkaConfig(kafkaPort = 9092)
+  implicit val actorMaterializer: ActorMaterializer = ActorMaterializer(
+    ActorMaterializerSettings(actorSystem)
+      .withInputBuffer(initialSize = 16, maxSize = 16)
+  )
 
-  private lazy val InputTopic = "delay-topic"
-  private lazy val source = Consumer.committableSource(consumerSettings, Subscriptions.topics(InputTopic))
+  "Delay app should not loose messages" in {
+    val messages = (1 to 20).map(n => n + "message")
 
-  "Delay app should not block consumption of other messages" in withRunningKafka {
-    publishStringMessageToKafka(InputTopic, "message one")
-    publishStringMessageToKafka(InputTopic, "message two")
-    consumeNumberStringMessagesFrom(InputTopic, 2)
-
-    val app = new Delay()
-    val output = source.via(app())
+    val output = Source(messages.toList)
+      .delay(4 seconds, DelayOverflowStrategy.emitEarly).addAttributes(Attributes.inputBuffer(16, 16))
       .runWith(TestSink.probe(actorSystem))
-      .request(2)
+      .request(messages.size)
       .receiveWithin(10 seconds)
 
-    val firstMessage = output(0)
-    val secondMessage = output(1)
-
-    println(firstMessage)
-    println(secondMessage)
-
-    firstMessage.timeAfterDelay - secondMessage.timeAfterDelay shouldBe <(1 second)
+    output should be(messages)
   }
-
-  private implicit class Seconds(time: LocalDateTime) {
-    def -(another: LocalDateTime) = (time.toEpochSecond(ZoneOffset.UTC) - another.toEpochSecond(ZoneOffset.UTC)).seconds
-  }
-
 }
